@@ -1,0 +1,233 @@
+---
+title: "Random Number Generation"
+subtitle: "5361 Homework 6"
+author: Qinxiao Shi ^[<qinxiao.shi@uconn.edu>]
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::pdf_document2
+documentclass: article
+papersize: letter
+fontsize: 11pt
+bibliography: Format.bib
+biblio-style: asa
+---
+
+# Rejection Sampling
+## Find Distribution
+Let $f$ and $g$ be two probability densities on $(0, \infty)$, such that
+$$f(x) \propto q(x)=\sqrt{4+x} \text{ } x^{\theta-1} \text{ } e^{-x}$$
+$$g(x) \propto g_{_1}(x)=(2x^{\theta-1}+x^{\theta-\frac {1}{2}})e^{-x}$$
+$$C \int_{0}^{\infty} g_{_1}{x} \text{ d}x=C\int_{0}^{\infty} (2x^{\theta-1}+x^{\theta-\frac {1}{2}})e^{-x} \text{ d}x=1$$
+Proof:
+\begin{equation*}
+  \begin{split}
+  \int_{0}^{\infty} {g_{_1}(x)} \text{ d}x&=2\int_{0}^{\infty} {x^{\theta-1}}e^{-x} \text{d}x+\int_{0}^{\infty} {x^{\theta-\frac {1}{2}}}e^{-x}\text{d}x\\
+                           &=2\Gamma(\theta) \int_{0}^{\infty}\frac {x^{\theta-1}}{\Gamma(\theta)} e^{-x} \text{d}x
+                           +\Gamma(\theta + \frac {1}{2}) \int_{0}^{\infty}\frac {x^{\theta-\frac{1}{2}}}{\Gamma(\theta + \frac {1}{2})} e^{-x} \text{d}x\\
+                           &=2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})
+  \end{split}
+\end{equation*}
+
+So $C [2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})]=1 \Rightarrow C=\frac{1}{2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})}$, and the density function of $g(x)$ is
+
+\begin{equation*}
+  \begin{split}
+  g(x)&=\frac{1}{2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})}(2x^{\theta-1}+x^{\theta-\frac {1}{2}})e^{-x}\\
+      &=\frac{1}{2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})}(2\Gamma(\theta)\frac {x^{\theta-1}e^{-x}}{\Gamma(\theta)}+\Gamma(\theta + \frac {1}{2}) \frac {x^{\theta-\frac {1}{2}}e^{-x}}{\Gamma(\theta + \frac {1}{2})})\\
+      &=\frac{2\Gamma(\theta)}{2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})} \text{Gamma}(\theta, 1) + \frac{\Gamma(\theta + \frac {1}{2})}{2\Gamma(\theta) + \Gamma(\theta + \frac {1}{2})}\text{Gamma}(\theta + \frac {1}{2}, 1)
+  \end{split}
+\end{equation*}
+
+
+## Kernel Density Estimation of $g$
+```{r, KDE, echo=TRUE}
+gdens <- function(n, theta, c1, c2){
+  
+g <- vector(length = n)
+u <- runif(n, min=0, max=1)
+
+for (i in 1:n) {
+    if(u[i] > c2) {
+      g1 <- rgamma(n = 1, shape = theta, scale = 1)
+      g[i] <- c1*g1 + c2*g1
+    }
+    else {
+      g2 <- rgamma(n = 1, shape = theta+1/2, scale = 1)
+      g[i] <- c1*g2+c2*g2
+    }
+}
+return(g)
+}
+
+
+
+### Theta = 1
+n = 10000
+theta = 2
+c1 <- 2*gamma(theta)/(gamma(theta)+gamma(theta+1/2))
+c2 <- 1-c1
+x <- seq(0, 30, 0.1)
+gd1 <- gdens(n = n, theta = theta, c1 = c1, c2 = c2)
+gt1 <- c1*dgamma(x, shape = theta, scale = 1) + c2*dgamma(x, shape = theta+1/2, scale = 1)
+
+plot(density(gd1), main = expression(paste(theta, "= 2")), xlab = "Value of X")
+lines(x, gt1, col = "red")
+legend("topright", box.lty = 0, legend = c("Simulated Density", "True Density"), col = c("black", "red"), lwd = 1)
+
+### Theta = 10
+n = 10000
+theta = 10
+c1 <- 2*gamma(theta)/(gamma(theta)+gamma(theta+1/2))
+c2 <- 1-c1
+x <- seq(0, 30, 0.1)
+gd2 <- gdens(n = n, theta = theta, c1 = c1, c2 = c2)
+gt2 <- c1*dgamma(x, shape = theta, scale = 1) + c2*dgamma(x, shape = theta+1/2, scale = 1)
+
+plot(density(gd2), main = expression(paste(theta, "= 10")), xlab = "Value of X")
+lines(x, gt2, col = "red")
+legend("topright", box.lty = 0, legend = c("Simulated Density", "True Density"), col = c("black", "red"), lwd = 1)
+```
+
+## Kernel Density Estimation of Rejection Sampling
+\begin{equation*}
+  \begin{split}
+  \alpha &= \sup_{x\ge 0} \frac {\sqrt{4+x} \text{ } x^{\theta-1} \text{ } e^{-x}} {C\left[(2x^{\theta-1}+x^{\theta-\frac {1}{2}})e^{-x}\right]}\\
+         &= \sup_{x\ge 0} \frac {\sqrt{4+x}}{C(2+\sqrt{x})}\\
+         &= \frac {1}{C}
+  \end{split}
+\end{equation*}
+
+So let $\alpha = \frac{1}{C}$, $\frac{q(x)}{\alpha g(x)}=\frac {Cq(x)}{g(x)}$
+
+```{r, rsKDE, echo=TRUE}
+reject.g <- function(n, theta, c1, c2){
+  x_new <- vector(length = n)
+  i <- 1
+  while (i <= n) {
+    u <- runif(1)
+    temp <- gdens(1, theta, c1, c2)
+    qx <- (4+temp)^0.5*temp^(theta-1)*exp(-temp)
+    gx <- c1*dgamma(temp, shape = theta, scale = 1) + c2*dgamma(temp, shape = theta+1/2, scale = 1)
+    qg <- (1/(gamma(theta)+gamma(theta+1/2)))*qx/gx
+    if (u <= qg){
+      x_new[i] <- temp
+      i <- i + 1
+    }
+  }
+  x_new
+}
+
+xv1 <- reject.g(n, theta = 2, c1, c2)
+plot(density(gd1), main = expression(paste(theta, "= 2")), xlab = "Value of X")
+lines(density(xv1), col = "red")
+legend("topright", box.lty = 0, legend = c("Simulated Density", "Rejection Sampling Density"), col = c("black", "red"), lwd = 1)
+
+xv2 <- reject.g(n, theta = 10, c1, c2)
+plot(density(gd2), main = expression(paste(theta, "= 10")), xlab = "Value of X")
+lines(density(xv2), col = "red")
+legend("topright", box.lty = 0, legend = c("Simulated Density", "Rejection Sampling Density"), col = c("black", "red"), lwd = 1)
+```
+
+
+# Mixture Proposal
+Let $f$ be a probability density on $(0, 1)$ such that
+$$f(x) \propto \frac{x^{\theta-1}}{1+x^2}+\sqrt{2+x^2}(1-x)^{\beta-1}$$
+where $0<x<1$.
+
+## Procedure Design
+Since 
+$$q(x)=\frac{x^{\theta-1}}{1+x^2}+\sqrt{2+x^2}(1-x)^{\beta-1} \le  x^{\theta-1}+\sqrt{3}(1-x)^{\beta-1}$$,
+$$g(x)=C(x^{\theta-1}+\sqrt{3}(1-x)^{\beta-1})$$
+\begin{equation*}
+  \begin{split}
+  \int_{0}^{1}g(x)\text{ d}x&=1\\
+  \int_{0}^{1}C(x^{\theta-1}+\sqrt{3}(1-x)^{\beta-1})\text{ d}x&=C\left[\int_{0}^{1}x^{\theta-1}\text{ d}x+\int_{0}^{1}\sqrt{3}(1-x)^{\beta-1}\text{ d}x \right]\\
+  &=C\left[\text{Beta}(\theta, 1)+\sqrt{3}\text{Beta}(1, \beta) \right]\\
+  &=1\\
+  \Rightarrow C=\frac{1}{\text{Beta}(\theta, 1)+\sqrt{3}\text{Beta}(1, \beta)}
+  \end{split}
+\end{equation*}
+
+```{r, proc, echo=TRUE}
+bdens <- function(n, theta, beta, p1, p2){
+  
+  b <- vector(length = n)
+  u <- runif(n, min=0, max=1)
+  
+  for (i in 1:n) {
+    if(u[i] > p2) {
+      b1 <- rbeta(n = 1, shape1 = theta, shape2 = 1)
+      b[i] <- p1*b1 + p2*b1
+    }
+    else {
+      b2 <- rbeta(n = 1, shape1 = 1, shape2 = beta)
+      b[i] <- p1*b2+p2*b2
+    }
+  }
+  return(b)
+}
+
+n = 10000
+theta = 10
+beta = 1
+p1 <- beta(theta, 1)/(beta(theta, 1)+beta(1, beta))
+p2 <- 1-p1
+
+x <- seq(0, 30, 0.1)
+bd <- bdens(n = n, theta = theta, beta = beta, p1 = p1, p2 = p2)
+
+plot(density(bd), main = expression(paste(theta, "= 10 and ", beta, "=1")), xlab = "Value of X")
+```
+
+## Rejection Sampling
+Let $q_1{x}=\frac{x^{\theta-1}}{1+x^2}$, $g_1{x}=\frac{x^{\theta-1}}{\text{Beta}(\theta, 1)}$,$q_2{x}=\sqrt{2+x^2}(1-x)^{\beta-1}$, $g_2{x}=\sqrt{3}\frac{(1-x)^{\beta-1}}{\text{Beta}(1, \beta)}$
+\begin{equation*}
+  \begin{split}
+  \alpha_1 &= \sup_{x\ge 0} \frac {q_1{x}}{C_1g_1{x}} = \text{Beta}(\theta, 1)\\
+  \alpha_2 &= \sup_{x\ge 0} \frac {q_2{x}}{C_2g_2{x}} = \sqrt{3}\text{Beta}(1, \beta)
+  \end{split}
+\end{equation*}
+```{r, rsKDEB, echo=TRUE}
+reject.b <- function(n, theta, beta, p1, p2){
+  x_new1 <- vector(length = n)
+
+  i <- 1
+  while (i <= n) {
+    u <- runif(1)
+    u1 <- runif(1)
+    if (u > p2) {
+      temp <- rbeta(1, shape1 = theta, shape2 = 1)
+      qx <- temp^(theta-1)/(1+temp^2)
+      gx <- temp^(theta-1)/beta(theta, 1)
+      qg <- qx/gx/ap1
+      if (u1 <= qg){
+        x_new1[i] <- temp
+        i <- i + 1
+      }
+    }
+    else {
+      temp <- rbeta(1, shape1 = 1, shape2 = beta)
+      qx <- (2+temp^2)^0.5*(1-temp)^(beta-1)
+      gx <- (1-temp)^(beta-1)/beta(1, beta)
+      qg <- qx/gx/ap2
+      if (u1 <= qg){
+        x_new1[i] <- temp
+        i <- i + 1
+      }
+    }
+    
+  }
+  x_new1
+}
+
+n <- 10000
+ap1 <- beta(theta, 1)
+ap2 <- 3^0.5*beta(1, beta)
+p1 <- ap1/(ap1+ap2)
+p2 <- 1-p1
+xv3 <- reject.b(n, theta = 10, beta = 1, p1, p2)
+
+plot(density(bd), main = expression(paste(theta, "= 10 and", beta, "=1")), xlab = "Value of X")
+lines(density(xv3), col = "red")
+legend("topright", box.lty = 0, legend = c("Simulated Density", "Rejection Sampling Density"), col = c("black", "red"), lwd = 1)
+```
